@@ -11,9 +11,11 @@ module Lita
         config.saved_request         = ''
       end
 
-      http.post '/lita/gitlab2jenkinsghp', :receive
+      http.post '/lita/gitlab2jenkinsghp', :domr
 
-      def receive(request, response)
+      http.post '/lita/gitlab2jenkinsghp_mr_status', :domr_change_status
+
+      def domr(request, response)
         json_body = extract_json_from_request(request)
         Lita.logger.info("Payload: #{json_body}")
         data = symbolize parse_payload(json_body)
@@ -21,6 +23,19 @@ module Lita
         room = Lita.config.handlers.gitlab2jenkins_ghp.room
         target = Source.new(room: room)
         robot.send_message(target, message)
+      end
+
+      def domr_change_status(request, response)
+        json_body = extract_json_from_request(request)
+        Lita.logger.info("Payload: #{json_body}")
+        data = symbolize parse_payload(json_body)
+        message = format_message_mr(data, json_body)
+        room = Lita.config.handlers.gitlab2jenkins_ghp.room
+        target = Source.new(room: room)
+        robot.send_message(target, message)
+      rescue Exception => e
+        Lita.logger.info "Doh something went wrong #{e.inspect}"
+        return ""
       end
 
       private
@@ -96,12 +111,15 @@ module Lita
         return ""
       end
 
+      def format_message_mr(data, json)
+        puts data
+        puts json
+      end
 
 
 
 
 
-      
     end
 
     Lita.register_handler(Gitlab2jenkinsGhp)
