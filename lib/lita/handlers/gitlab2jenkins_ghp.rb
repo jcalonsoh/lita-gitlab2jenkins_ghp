@@ -70,35 +70,30 @@ module Lita
         Lita.logger.info "Error formatting message on build_branch_message: #{data.inspect}"
       end
 
-      def build_merge_message(data)
-        if data[:object_attributes][:state] == 'reopened'
-          url_1 =  "#{Lita.config.handlers.gitlab2jenkins_ghp.url_gitlab}/api/v3/projects/#{data[:object_attributes][:source_project_id]}/"
-          url_1 << "repository/branches/#{data[:object_attributes][:source_branch]}"
-          url_1 << "?private_token=#{Lita.config.handlers.gitlab2jenkins_ghp.private_token_gitlab}"
-          request_project = http.get(url_1)
-          gitlab_data = parse_payload(symbolize request_project.body)
-          get_redis << gitlab_data["commit"]["id"].to_s
-          recover_payload = redis.get("#{get_redis}")
-          if recover_payload.nil?
-            return "Your build has not found pushed event, send a tested webhooked"
-          else
-            return "For build #{recover_payload}"
-          end
-          #elsif data[:object_attributes][:state] == 'reopened'
-          #  url_2 =  "#{Lita.config.handlers.gitlab2jenkins_ghp.url_gitlab}/api/v3/projects/#{data[:object_attributes][:source_project_id]}/"
-          #  url_2 << "repository/branches/#{data[:object_attributes][:source_branch]}"
-          #  url_2 << "?private_token=#{Lita.config.handlers.gitlab2jenkins_ghp.private_token_gitlab}"
-          #  request_project = http.get(url_2)
-          #  gitlab_data = parse_payload(symbolize request_project.body)
-          #  get_redis << gitlab_data["commit"]["id"].to_s
-          #  recover_payload = redis.get("#{get_redis}")
-          #  if recover_payload.nil?
-          #    return "Your build has not found pushed event, send a tested webhooked"
-          #  else
-          #    return "For build #{recover_payload}"
-          #  end
-        else
+      def gitlab_rescue_commit(project_id, branch)
+        http.get("#{Lita.config.handlers.gitlab2jenkins_ghp.url_gitlab}/api/v3/projects/#{project_id}/repository/branches/#{branch}?private_token=#{Lita.config.handlers.gitlab2jenkins_ghp.private_token_gitlab}")
+      rescue
+        Lita.logger.info "#{Lita.config.handlers.gitlab2jenkins_ghp.url_gitlab}/api/v3/projects/#{project_id}/repository/branches/#{branch}?private_token=#{Lita.config.handlers.gitlab2jenkins_ghp.private_token_gitlab}"
+        Lita.logger.info "gitlab_rescue_commit"
+      end
 
+      def get_commit_from_redis(id)
+        redis.get(id)
+        puts redis.get(id)
+      rescue
+        Lita.logger.info "get_commit_from_redis"
+      end
+
+      def git_lab_data(project_id, branch)
+        parse_payload((((gitlab_rescue_commit(project_id, branch)).to_hash)[:body]))
+      end
+
+      def build_merge_message(data)
+        if (data[:object_attributes][:state].to_s).include?('reopened', 'opened')
+          recover_payload << redis.get(git_lab_data(data[:object_attributes][:source_project_id], data[:object_attributes][:source_branch])['commit']['id']).nil?
+          return "For build #{recover_payload}"
+        else
+          Lita.logger.info "build_merge_sms #{data.inspect}"
           return "For build Desavaible"
 
         end
