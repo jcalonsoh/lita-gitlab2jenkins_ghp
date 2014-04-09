@@ -22,20 +22,28 @@ module Lita
         message = format_message(data, json_body)
         room = Lita.config.handlers.gitlab2jenkins_ghp.room
         target = Source.new(room: room)
-        robot.send_message(target, message)
+        if message.to_s != 'true'
+          robot.send_message(target, message)
+        end
+
+      rescue Exception => e
+        Lita.logger.error "Could not domr: #{e.inspect}"
       end
 
       def domr_change_status(request, response)
         json_body = extract_json_from_request(request)
+        Lita.logger.info "GitLab Project ID: #{request.params['mr_project_id']}"
         Lita.logger.info("Payload: #{json_body}")
         data = symbolize parse_payload(json_body)
         message = format_message_mr(data, json_body)
         room = Lita.config.handlers.gitlab2jenkins_ghp.room
         target = Source.new(room: room)
-        robot.send_message(target, message)
+        if message.to_s != 'true'
+          robot.send_message(target, message)
+        end
+
       rescue Exception => e
-        Lita.logger.info "Doh something went wrong #{e.inspect}"
-        return ""
+        Lita.logger.error "Could not domr_change_status: #{e.inspect}"
       end
 
       private
@@ -63,28 +71,27 @@ module Lita
           build_branch_hook(data, json)
         elsif data.key? :object_kind
           build_merge_hook(data, json)
-        else
-          return ""
         end
+
+      rescue => e
+        Lita.logger.error "Could not format message: #{e.inspect}"
       end
 
       def build_branch_hook(data, json)
         data[:link] = "<#{data[:repository][:homepage]}|#{data[:repository][:name]}>"
-        redis.set(data[:commits][0][:id], json.to_s)
+        redis.set("commit:#{data[:commits][0][:id]}", json.to_s)
         "Commit Stored: #{data[:commits][0][:id]}"
       end
 
       def gitlab_rescue_commit(project_id, branch)
         http.get("#{Lita.config.handlers.gitlab2jenkins_ghp.url_gitlab}/api/v3/projects/#{project_id}/repository/branches/#{branch}?private_token=#{Lita.config.handlers.gitlab2jenkins_ghp.private_token_gitlab}")
+
+      rescue => e
+        Lita.logger.error "Could not rescue GitLab commit: #{e.inspect}"
       end
 
-      def git_lab_data(project_id, branch)
+      def git_lab_data_branch_info(project_id, branch)
         parse_payload((((gitlab_rescue_commit(project_id, branch)).to_hash)[:body]))
-      end
-
-      def gitlab_redis_get(id)
-        redis.get(git_lab_data(data[:object_attributes][:source_project_id], data[:object_attributes][:source_branch])['commit']['id'])
-        return
       end
 
       def jenkins_hook_ghp(json)
@@ -93,22 +100,23 @@ module Lita
           req.headers['Content-Type'] = 'application/json'
           req.body = json
         end
+
       rescue => e
-        Lita.logger.info "URL #{Lita.config.handlers.gitlab2jenkins_ghp.url_jenkins}"
+        Lita.logger.error "Could not make hook to jenkins: #{e.inspect}"
       end
 
       def build_merge_hook(data, json)
         if ['reopened', 'opened'].include? data[:object_attributes][:state]
           Lita.logger.info "It's a merge request"
-          payload_rescue = redis.get(git_lab_data(data[:object_attributes][:source_project_id], data[:object_attributes][:source_branch])['commit']['id'])
+          payload_rescue = redis.get("commit:#{git_lab_data_branch_info(data[:object_attributes][:source_project_id], data[:object_attributes][:source_branch])['commit']['id']}")
           if (payload_rescue).size > 0
             Lita.logger.info "Merge request found"
             jenkins_hook_ghp(payload_rescue).inspect
           end
         end
+
       rescue Exception => e
-        Lita.logger.info "Doh something went wrong #{e.inspect}"
-        return ""
+        Lita.logger.error "Could not make Build Merge Reques #{e.inspect}"
       end
 
       def format_message_mr(data, json)
