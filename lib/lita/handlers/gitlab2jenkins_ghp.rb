@@ -11,11 +11,13 @@ module Lita
         config.saved_request         = ''
       end
 
-      http.post '/lita/gitlab2jenkinsghp', :domr
+      http.post '/lita/gitlab2jenkinsghp', :do_mr
 
-      http.post '/lita/gitlab2jenkinsghp_mr_status', :domr_change_status
+      http.post '/lita/gitlab2jenkinsghp_mr_status', :do_mr_change_status
 
-      def domr(request, response)
+      ttp.post '/lita/gitlab2jenkinsghp_ci_status', :do_ci_change_status
+
+      def do_mr(request, response)
         json_body = extract_json_from_request(request)
         Lita.logger.info("Payload: #{json_body}")
         data = symbolize parse_payload(json_body)
@@ -30,12 +32,28 @@ module Lita
         Lita.logger.error "Could not domr: #{e.inspect}"
       end
 
-      def domr_change_status(request, response)
+      def do_mr_change_status(request, response)
         json_body = extract_json_from_request(request)
         Lita.logger.info "GitLab Project ID: #{request.params['mr_project_id']}"
         Lita.logger.info("Payload: #{json_body}")
         data = symbolize parse_payload(json_body)
         message = format_message_mr(data, json_body)
+        room = Lita.config.handlers.gitlab2jenkins_ghp.room
+        target = Source.new(room: room)
+        if message.to_s != 'true'
+          robot.send_message(target, message)
+        end
+
+      rescue Exception => e
+        Lita.logger.error "Could not domr_change_status: #{e.inspect}"
+      end
+
+      def do_ci_change_status(request, response)
+        json_body = extract_json_from_request(request)
+        Lita.logger.info "GitLab Project ID: #{request.params['mr_project_id']}"
+        Lita.logger.info("Payload: #{json_body}")
+        data = symbolize parse_payload(json_body)
+        message = format_message_ci(data, json_body)
         room = Lita.config.handlers.gitlab2jenkins_ghp.room
         target = Source.new(room: room)
         if message.to_s != 'true'
@@ -124,7 +142,10 @@ module Lita
         puts json
       end
 
-
+      def format_message_ci(data, json)
+        puts data
+        puts json
+      end
 
 
 
