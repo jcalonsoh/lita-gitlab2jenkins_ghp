@@ -15,7 +15,7 @@ module Lita
 
       http.post '/lita/gitlab2jenkinsghp_mr_status', :do_mr_change_status
 
-      ttp.post '/lita/gitlab2jenkinsghp_ci_status', :do_ci_change_status
+      http.get '/lita/gitlab2jenkinsghp_ci_status/*id_project/builds/*sha_commit', :do_ci_change_status
 
       def do_mr(request, response)
         json_body = extract_json_from_request(request)
@@ -34,7 +34,7 @@ module Lita
 
       def do_mr_change_status(request, response)
         json_body = extract_json_from_request(request)
-        Lita.logger.info "GitLab Project ID: #{request.params['mr_project_id']}"
+        Lita.logger.info "Jenkins Proyect: #{request.params['id_project']}"
         Lita.logger.info("Payload: #{json_body}")
         data = symbolize parse_payload(json_body)
         message = format_message_mr(data, json_body)
@@ -50,8 +50,15 @@ module Lita
 
       def do_ci_change_status(request, response)
         json_body = extract_json_from_request(request)
-        Lita.logger.info "GitLab Project ID: #{request.params['mr_project_id']}"
+        Lita.logger.info "GitLab CI Project ID: #{request.env['router.params'][:id_project]}"
+        Lita.logger.info "GitLab CI Commit SHA: #{request.env['router.params'][:sha_commit]}"
+        Lita.logger.info "GitLab CI Token: #{request.params['token']}"
         Lita.logger.info("Payload: #{json_body}")
+        #ci_opts = {
+        #    :status => 'success'
+        #}
+        response['status'] = 'failed'
+        puts response.inspect
         data = symbolize parse_payload(json_body)
         message = format_message_ci(data, json_body)
         room = Lita.config.handlers.gitlab2jenkins_ghp.room
@@ -123,13 +130,25 @@ module Lita
         Lita.logger.error "Could not make hook to jenkins: #{e.inspect}"
       end
 
+      def rescue_gitlab_project_name (id)
+        url = http.get("#{Lita.config.handlers.gitlab2jenkins_ghp.url_gitlab}/api/v3/projects/#{id}?private_token=#{Lita.config.handlers.gitlab2jenkins_ghp.private_token_gitlab}")
+      rescue => e
+        Lita.logger.error "Could not rescue GitLab commit: #{e.inspect}"
+      end
+
+      def git_lab_data_project_info(id)
+        parse_payload((((rescue_gitlab_project_name(id)).to_hash)[:body]))
+      end
+
       def build_merge_hook(data, json)
+        redis.set("mr:#{git_lab_data_project_info(data[:object_attributes][:target_project_id])['name']}:#{data[:object_attributes][:id]}", json.to_s)
+        "Saved Merge Request: #{data[:object_attributes][:id]}"
         if ['reopened', 'opened'].include? data[:object_attributes][:state]
           Lita.logger.info "It's a merge request"
           payload_rescue = redis.get("commit:#{git_lab_data_branch_info(data[:object_attributes][:source_project_id], data[:object_attributes][:source_branch])['commit']['id']}")
           if (payload_rescue).size > 0
             Lita.logger.info "Merge request found"
-            jenkins_hook_ghp(payload_rescue).inspect
+            jenkins_hook_ghp(payload_rescue).response.status
           end
         end
 
