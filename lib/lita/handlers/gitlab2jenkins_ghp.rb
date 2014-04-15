@@ -17,6 +17,8 @@ module Lita
 
       http.get '/lita/gitlab2jenkinsghp_ci_status/*id_project/builds/*sha_commit', :do_ci_change_status
 
+      http.get '/lita/gitlab2jenkinsghp_ci_status/*id_project', :do_img_jenkins
+
       def do_mr(request, response)
         json_body = extract_json_from_request(request)
         Lita.logger.info("Payload: #{json_body}")
@@ -34,10 +36,11 @@ module Lita
 
       def do_mr_change_status(request, response)
         json_body = extract_json_from_request(request)
-        Lita.logger.info "Jenkins Proyect: #{request.params['id_project']}"
+        id_project = request.params['id_project'].to_s
+        Lita.logger.info "Jenkins Proyect: #{id_project}"
         Lita.logger.info("Payload: #{json_body}")
         data = symbolize parse_payload(json_body)
-        message = format_message_mr(data, json_body)
+        message = format_message_mr(data, json_body, id_project)
         room = Lita.config.handlers.gitlab2jenkins_ghp.room
         target = Source.new(room: room)
         if message.to_s != 'true'
@@ -58,7 +61,6 @@ module Lita
         #    :status => 'success'
         #}
         response['status'] = 'failed'
-        puts response.inspect
         data = symbolize parse_payload(json_body)
         message = format_message_ci(data, json_body)
         room = Lita.config.handlers.gitlab2jenkins_ghp.room
@@ -71,7 +73,34 @@ module Lita
         Lita.logger.error "Could not domr_change_status: #{e.inspect}"
       end
 
+      def do_img_jenkins(request, response)
+        project_name = git_lab_data_project_info(request.env['router.params'][:id_project][0])['name']
+
+        gkeys = @redis.keys("mr:#{project_name}:*")
+
+        code_climate('QA-API', response)
+
+      rescue Exception => e
+        Lita.logger.error "Could not do_img_jenkins: #{e.inspect}"
+      end
+
       private
+
+      def code_climate(job, response)
+        url = "#{Lita.config.handlers.gitlab2jenkins_ghp.url_jenkins.to_s}"<<"#{Lita.config.handlers.gitlab2jenkins_ghp.url_jenkins_img.to_s}"<<"#{job}"
+        uri = URI(url)
+        res = Net::HTTP.get_response(uri)
+
+        if res.is_a?(Net::HTTPSuccess)
+          response.body << res.body
+          response['Content-Type'] = res['Content-Type']
+        end
+
+        Lita.logger.info "Sending Jenkins to Gitlab Code Climate #{url}"
+
+      rescue Exception => e
+        Lita.logger.error "Could not do_img_jenkins: #{e.inspect}"
+      end
 
       def extract_json_from_request(request)
         request.body.rewind
@@ -121,7 +150,7 @@ module Lita
 
       def jenkins_hook_ghp(json)
         http.post do |req|
-          req.url Lita.config.handlers.gitlab2jenkins_ghp.url_jenkins
+          req.url '#{Lita.config.handlers.gitlab2jenkins_ghp.url_jenkins}#{Lita.config.handlers.gitlab2jenkins_ghp.url_jenkins_hook}'
           req.headers['Content-Type'] = 'application/json'
           req.body = json
         end
@@ -156,7 +185,24 @@ module Lita
         Lita.logger.error "Could not make Build Merge Reques #{e.inspect}"
       end
 
-      def format_message_mr(data, json)
+      def key_value_source_project_finder(source_project, project_name)
+        gkeys = @redis.keys("mr:#{project_name}:*")
+        gkeys.each do |key|
+          json = redis.get(gkeys[keys])
+          data = symbolize parse_payload(json)
+          source_project_id = data[:object_attributes][:source_project_id] if data[:object_attributes][:source_branch] == source_project
+        end
+
+        return source_project_id
+
+      rescue Exception => e
+        Lita.logger.error "Could not key_value_source_project_finder #{e.inspect}"
+      end
+
+      def format_message_mr(data, json, id)
+        project_name = git_lab_data_project_info(id)['name']
+        source_project_id = key_value_source_project_finder(data[:build][:parameters]['ANY_BRANCH_PATTERN'],project_name)
+        redis.set("jenkins:#{project_name}:#{data[:build][:number]}", json)
         puts data
         puts json
       end

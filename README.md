@@ -12,7 +12,12 @@ gem "lita-gitlab2jenkins_ghp"
 
 ## Configuration
 
-TODO: Describe any configuration attributes the plugin exposes.
+REQUERIMENTS:
+
+from Jenkins =>
+Gitlab Hook Plugin              1.0.0
+Embeddable Build Status         1.4.0
+
 
 ## Usage
 
