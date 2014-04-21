@@ -24,11 +24,6 @@ module Lita
         Lita.logger.info("Payload: #{json_body}")
         data = symbolize parse_payload(json_body)
         message = format_message(data, json_body)
-        room = Lita.config.handlers.gitlab2jenkins_ghp.room
-        target = Source.new(room: room)
-        if message.to_s != 'true'
-          robot.send_message(target, message)
-        end
 
       rescue Exception => e
         Lita.logger.error "Could not domr: #{e.inspect}"
@@ -41,34 +36,22 @@ module Lita
         Lita.logger.info("Payload: #{json_body}")
         data = symbolize parse_payload(json_body)
         message = format_message_mr(data, json_body, id_project)
-        room = Lita.config.handlers.gitlab2jenkins_ghp.room
-        target = Source.new(room: room)
-        if message.to_s != 'true'
-          robot.send_message(target, message)
-        end
 
       rescue Exception => e
         Lita.logger.error "Could not domr_change_status: #{e.inspect}"
       end
 
       def do_ci_change_status(request, response)
-        json_body = extract_json_from_request(request)
         Lita.logger.info "GitLab CI Project ID: #{request.env['router.params'][:id_project]}"
         Lita.logger.info "GitLab CI Commit SHA: #{request.env['router.params'][:sha_commit]}"
         Lita.logger.info "GitLab CI Token: #{request.params['token']}"
-        Lita.logger.info("Payload: #{json_body}")
-        #ci_opts = {
-        #    :status => 'success'
-        #}
-        response['status'] = 'failed'
-        data = symbolize parse_payload(json_body)
-        message = format_message_ci(data, json_body)
+        message = format_message_ci(request.env['router.params'][:id_project][0], request.env['router.params'][:sha_commit][0])
         room = Lita.config.handlers.gitlab2jenkins_ghp.room
         target = Source.new(room: room)
         if message.to_s != 'true'
-          robot.send_message(target, message)
+          response['status'] = message
+          Lita.logger.info "CI Final Status: #{message.to_s}"
         end
-
       rescue Exception => e
         Lita.logger.error "Could not domr_change_status: #{e.inspect}"
       end
@@ -149,11 +132,15 @@ module Lita
       end
 
       def jenkins_hook_ghp(json)
+        url = "#{Lita.config.handlers.gitlab2jenkins_ghp.url_jenkins}" << "#{Lita.config.handlers.gitlab2jenkins_ghp.url_jenkins_hook}"
         http.post do |req|
-          req.url '#{Lita.config.handlers.gitlab2jenkins_ghp.url_jenkins}#{Lita.config.handlers.gitlab2jenkins_ghp.url_jenkins_hook}'
+          req.url url
           req.headers['Content-Type'] = 'application/json'
           req.body = json
         end
+
+        Lita.logger.info "Sending data to Jenkins: #{Lita.config.handlers.gitlab2jenkins_ghp.url_jenkins}#{Lita.config.handlers.gitlab2jenkins_ghp.url_jenkins_hook}"
+        Lita.logger.info "With JSON: #{json}"
 
       rescue => e
         Lita.logger.error "Could not make hook to jenkins: #{e.inspect}"
@@ -171,13 +158,23 @@ module Lita
 
       def build_merge_hook(data, json)
         redis.set("mr:#{git_lab_data_project_info(data[:object_attributes][:target_project_id])['name']}:#{data[:object_attributes][:id]}", json.to_s)
-        "Saved Merge Request: #{data[:object_attributes][:id]}"
         if ['reopened', 'opened'].include? data[:object_attributes][:state]
           Lita.logger.info "It's a merge request"
           payload_rescue = redis.get("commit:#{git_lab_data_branch_info(data[:object_attributes][:source_project_id], data[:object_attributes][:source_branch])['commit']['id']}")
           if (payload_rescue).size > 0
             Lita.logger.info "Merge request found"
-            jenkins_hook_ghp(payload_rescue).response.status
+            jenkins_hook_ghp(payload_rescue)
+          end
+        else
+          redis.del("mr:#{git_lab_data_project_info(data[:object_attributes][:target_project_id])['name']}:#{data[:object_attributes][:id]}")
+          jproject_name = git_lab_data_project_info(data[:object_attributes][:target_project_id])['name']
+          gkeys = @redis.keys("jenkins:#{jproject_name}:*")
+          gkeys.each do |key|
+            Lita.logger.info "Jenkins Key for Delete: #{key}"
+            json_off = redis.get(key)
+            jdata = symbolize parse_payload(json_off)
+            Lita.logger.info "Branch found for delete: #{jdata[:build][:parameters][:ANY_BRANCH_PATTERN]}"
+            redis.del(key) if data[:object_attributes][:source_branch] == jdata[:build][:parameters][:ANY_BRANCH_PATTERN]
           end
         end
 
@@ -185,33 +182,89 @@ module Lita
         Lita.logger.error "Could not make Build Merge Reques #{e.inspect}"
       end
 
-      def key_value_source_project_finder(source_project, project_name)
+      def key_value_source_project_finder_mr(source_project, project_name)
         gkeys = @redis.keys("mr:#{project_name}:*")
         gkeys.each do |key|
-          json = redis.get(gkeys[keys])
+          json = redis.get(key)
           data = symbolize parse_payload(json)
           source_project_id = data[:object_attributes][:source_project_id] if data[:object_attributes][:source_branch] == source_project
         end
 
-        return source_project_id
-
       rescue Exception => e
-        Lita.logger.error "Could not key_value_source_project_finder #{e.inspect}"
+        Lita.logger.error "Could not key_value_source_project_finder_mr #{e.inspect}"
       end
 
       def format_message_mr(data, json, id)
         project_name = git_lab_data_project_info(id)['name']
-        source_project_id = key_value_source_project_finder(data[:build][:parameters]['ANY_BRANCH_PATTERN'],project_name)
+        source_project_id = key_value_source_project_finder_mr(data[:build][:parameters]['ANY_BRANCH_PATTERN'],project_name)
         redis.set("jenkins:#{project_name}:#{data[:build][:number]}", json)
-        puts data
-        puts json
+
+      rescue Exception => e
+        Lita.logger.error "Could not format_message_mr #{e.inspect}"
       end
 
-      def format_message_ci(data, json)
-        puts data
-        puts json
+      def key_value_build_finder_jenkins(source_project, project_name)
+        gkeys = @redis.keys("jenkins:#{project_name}:*")
+        Lita.logger.info "Jenkins Status found key: #{gkeys.inspect}"
+        gkeys.each do |key|
+          Lita.logger.info "Jenkins Status key #{key}"
+          json = redis.get(key)
+          data = symbolize parse_payload(json)
+          Lita.logger.info "Branch found #{data[:build][:parameters][:ANY_BRANCH_PATTERN]}"
+          if data[:build][:phase] == 'FINISHED'
+            if data[:build][:parameters][:ANY_BRANCH_PATTERN] == source_project
+              if data[:build][:status] == 'FAILURE'
+                return 'failed'
+              else
+                return 'success'
+              end
+              Lita.logger.info "Status: #{data[:build][:status]}"
+            end
+          elsif data[:build][:phase] == 'STARTED'
+            return 'running' if data[:build][:parameters][:ANY_BRANCH_PATTERN] == source_project
+          else
+            return 'pending'
+          end
+        end
+
+        return 'error'
+
+      rescue Exception => e
+        Lita.logger.error "Could not key_value_build_finder_jenkins #{e.inspect}"
       end
 
+
+      def key_value_commit_source_project_finder_jenkins(commit, project_name)
+        gkeys = @redis.keys("mr:#{project_name}:*")
+        Lita.logger.info "Loking Array data for: #{gkeys.inspect}"
+        gkeys.each do |key|
+          Lita.logger.info "Loking data in #{key.inspect}"
+          json = redis.get(key)
+          data = symbolize parse_payload(json)
+          json_from_gitlab = get_commit_from_gitlab_source_project(data[:object_attributes][:source_project_id],data[:object_attributes][:source_branch]).body
+          data_gitlab = symbolize parse_payload(json_from_gitlab)
+          return data_gitlab[:name] if data_gitlab[:commit][:id] == commit
+        end
+
+      rescue Exception => e
+        Lita.logger.error "Could not key_value_commit_source_project_finder_jenkins #{e.inspect}"
+      end
+
+      def get_commit_from_gitlab_source_project(id, branch)
+        url = http.get("#{Lita.config.handlers.gitlab2jenkins_ghp.url_gitlab}/api/v3/projects/#{id}/repository/branches/#{branch}?private_token=#{Lita.config.handlers.gitlab2jenkins_ghp.private_token_gitlab}")
+      rescue => e
+        Lita.logger.error "Could not rescue GitLab commit: #{e.inspect}"
+      end
+
+      def format_message_ci(id, commit)
+        project_name = git_lab_data_project_info(id)['name']
+        source_project = key_value_commit_source_project_finder_jenkins(commit, project_name)
+        Lita.logger.info "Looking Status CI: #{source_project}"
+        return key_value_build_finder_jenkins(source_project, project_name)
+
+      rescue Exception => e
+        Lita.logger.error "Could not format_message_ci #{e.inspect}"
+      end
 
 
     end
