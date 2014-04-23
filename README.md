@@ -1,6 +1,12 @@
 # lita-gitlab2jenkins_ghp
 
-TODO: Add a description of the plugin.
+[![Build Status](https://travis-ci.org/jcalonsoh/lita-gitlab2jenkins_ghp.svg)](https://travis-ci.org/jcalonsoh/lita-gitlab2jenkins_ghp)
+[![Code Climate](https://codeclimate.com/github/jcalonsoh/lita-gitlab2jenkins_ghp.png)](https://codeclimate.com/github/jcalonsoh/lita-gitlab2jenkins_ghp)
+[![Coverage Status](https://coveralls.io/repos/jcalonsoh/lita-gitlab2jenkins_ghp/badge.png)](https://coveralls.io/r/jcalonsoh/lita-gitlab2jenkins_ghp)
+
+**lita-fitlab2jenkins_ghp is a [Lita](https://github.com/jimmycuadra/lita) that uses [GitLab](https://www.gitlab.com/gitlab-ce/)
+webhooks and ci-status to be build with [Jenkins](http://jenkins-ci.org/).
+
 
 ## Installation
 
@@ -12,16 +18,29 @@ gem "lita-gitlab2jenkins_ghp"
 
 ## Configuration
 
-REQUERIMENTS:
+### REQUERIMENTS:
 
-from Jenkins =>
-Gitlab Hook Plugin              1.0.0
-Embeddable Build Status         1.4.0
+You will need to install on Jenkins the next plugins =>
 
+[Gitlab Hook Plugin 1.0.0](https://wiki.jenkins-ci.org/display/JENKINS/Gitlab+Hook+Plugin),
+[Embeddable Build Status 1.4](https://wiki.jenkins-ci.org/display/JENKINS/Embeddable+Build+Status+Plugin),
+[Notification Plugin 1.5](https://wiki.jenkins-ci.org/display/JENKINS/Notification+Plugin)
 
-## Usage
+### Example usage YML
 
-TODO: Describe the plugin's features and how to use them.
+``` ruby
+Lita.configure do |config|
+  config.handlers.gitlab2jenkins_ghp.room                 = '#error_channel'
+  config.handlers.gitlab2jenkins_ghp.url_gitlab           = 'http://gitlab.example.com'
+  config.handlers.gitlab2jenkins_ghp.url_jenkins          = 'http://jenkins.example.com'
+  config.handlers.gitlab2jenkins_ghp.url_jenkins_hook     = '/gitlab/build_now'
+  config.handlers.gitlab2jenkins_ghp.url_jenkins_img      = '/buildStatus/icon?job='
+  config.handlers.gitlab2jenkins_ghp.url_jenkins_icon     = '/static/843013a3/images/jenkins.png'
+  config.handlers.gitlab2jenkins_ghp.private_token_gitlab = 'some_gitlab_token_from_admin_user'
+end
+```
+
+For more understanding please read [wiki](https://github.com/jcalonsoh/lita-gitlab2jenkins_ghp/wiki)
 
 ## License
 

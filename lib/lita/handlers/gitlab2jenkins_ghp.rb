@@ -59,9 +59,17 @@ module Lita
       def do_img_jenkins(request, response)
         project_name = git_lab_data_project_info(request.env['router.params'][:id_project][0])['name']
 
-        gkeys = @redis.keys("mr:#{project_name}:*")
+        gkeys = @redis.keys("jenkins:#{project_name}:*")
+        gkeys.each do |key|
+          json_off = redis.get(key)
+          jdata = symbolize parse_payload(json_off)
+          job = jdata[:name]
+          code_climate(job, response)
+        end
 
-        code_climate('QA-API', response)
+        if gkeys.empty?
+          nocode_climate(response)
+        end
 
       rescue Exception => e
         Lita.logger.error "Could not do_img_jenkins: #{e.inspect}"
@@ -71,6 +79,22 @@ module Lita
 
       def code_climate(job, response)
         url = "#{Lita.config.handlers.gitlab2jenkins_ghp.url_jenkins.to_s}"<<"#{Lita.config.handlers.gitlab2jenkins_ghp.url_jenkins_img.to_s}"<<"#{job}"
+        uri = URI(url)
+        res = Net::HTTP.get_response(uri)
+
+        if res.is_a?(Net::HTTPSuccess)
+          response.body << res.body
+          response['Content-Type'] = res['Content-Type']
+        end
+
+        Lita.logger.info "Sending Jenkins to Gitlab Code Climate #{url}"
+
+      rescue Exception => e
+        Lita.logger.error "Could not do_img_jenkins: #{e.inspect}"
+      end
+
+      def nocode_climate(response)
+        url = "#{Lita.config.handlers.gitlab2jenkins_ghp.url_jenkins.to_s}"<<"#{Lita.config.handlers.gitlab2jenkins_ghp.url_jenkins_icon.to_s}"
         uri = URI(url)
         res = Net::HTTP.get_response(uri)
 
