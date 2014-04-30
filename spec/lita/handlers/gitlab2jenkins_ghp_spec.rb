@@ -134,14 +134,11 @@ describe Lita::Handlers::Gitlab2jenkinsGhp, lita_handler: true do
       end
     end
 
-
     context 'Using GET endpoint from gitlab' do
       it "route gitlab fetch data of a GET #{http_route_path}/ci_status to :receive" do
         routes_http(:post, "#{http_route_path}/#{to_route_ci_status}").to(:receive)
       end
     end
-
-
   end
 
 end
