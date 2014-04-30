@@ -31,8 +31,9 @@ module Lita
         if routing_to_request_method =='POST'
           if routing_to == 'gitlab'       #receive hook from gitlab to report commits and merge request event
             do_mr(json_body, data, project_name_target, project_source_id_commit)
-          elsif routing_to == 'jenkins'                                           #receive hook from jenkins to report job status build
-            do_mr_change_status(request, response, json_body, data)
+          elsif routing_to == 'jenkins'   #receive hook from jenkins to report job status build
+            project_name_params = request.params['project_name_params']
+            do_mr_change_status(request, response, json_body, data, project_name_params)
           end
         elsif routing_to_request_method =='GET'
           if routing_to == 'ci_status'
@@ -48,11 +49,11 @@ module Lita
         Lita.logger.error "Could not receive: #{e.inspect}"
       end
 
-      def do_mr_change_status(request, response, json_body, data)
+      def do_mr_change_status(request, response, json_body, data, project_name_params)
         id_project = request.params['id_project'].to_s
         Lita.logger.info "Jenkins Proyect: #{id_project}"
         Lita.logger.info("Payload: #{json_body}")
-        ci_status_setter(data, json_body, id_project)
+        ci_status_setter(data, json_body, id_project, project_name_params)
 
       rescue Exception => e
         Lita.logger.error "Could not domr_change_status: #{e.inspect}"
@@ -225,22 +226,26 @@ module Lita
         Lita.logger.error "Could not make Build Merge Reques #{e.inspect}"
       end
 
-      def key_value_source_project_finder_mr(source_project, project_name)
-        gkeys = @redis.keys("mr:#{project_name}:*")
-        gkeys.each do |key|
-          json = redis.get(key)
-          data = symbolize parse_payload(json)
-          source_project_id = data[:object_attributes][:source_project_id] if data[:object_attributes][:source_branch] == source_project
+      # def key_value_source_project_finder_mr(source_project, project_name)
+      #   gkeys = @redis.keys("mr:#{project_name}:*")
+      #   gkeys.each do |key|
+      #     json = redis.get(key)
+      #     data = symbolize parse_payload(json)
+      #     source_project_id = data[:object_attributes][:source_project_id] if data[:object_attributes][:source_branch] == source_project
+      #   end
+      #
+      # rescue Exception => e
+      #   Lita.logger.error "Could not key_value_source_project_finder_mr #{e.inspect}"
+      # end
+
+      def ci_status_setter(data, json, project_id, project_name_params)
+        if project_name_params == ''
+          project_name = git_lab_data_project_info(project_id)['name']
+          redis.set("jenkins:#{project_name}:#{data[:build][:number]}", json)
+        else
+          redis.set("jenkins:#{project_name_params}:#{data[:build][:number]}", json)
         end
 
-      rescue Exception => e
-        Lita.logger.error "Could not key_value_source_project_finder_mr #{e.inspect}"
-      end
-
-      def ci_status_setter(data, json, id)
-        project_name = git_lab_data_project_info(id)['name']
-        source_project_id = key_value_source_project_finder_mr(data[:build][:parameters]['ANY_BRANCH_PATTERN'],project_name)
-        redis.set("jenkins:#{project_name}:#{data[:build][:number]}", json)
 
       rescue Exception => e
         Lita.logger.error "Could not format_message_mr #{e.inspect}"

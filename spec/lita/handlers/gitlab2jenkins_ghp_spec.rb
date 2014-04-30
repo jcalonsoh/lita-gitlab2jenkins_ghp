@@ -25,10 +25,16 @@ describe Lita::Handlers::Gitlab2jenkinsGhp, lita_handler: true do
   let(:project_name_target) { 'api' }
   let(:redis_key_merge_request) {"mr:#{project_name_target}:#{merge_request}"}
 
+  let(:to_route_jenkins) { 'jenkins' }
+  let(:jenkins_id_project) { '7' }
+  let(:redis_key_jenkins_job) { 'jenkins:api:130' }
+  let(:project_name_params) { 'api' }
+  let(:to_route_ci_status) { 'ci_status' }
+
   describe '#receive' do
 
-    context 'Using POST endpoint' do
-      
+    context 'Using POST endpoint for gitlab' do
+
       it "route gitlab push event POST #{http_route_path}/gitlab to :receive" do
         routes_http(:post, "#{http_route_path}/#{to_route_gitlab}").to(:receive)
       end
@@ -90,8 +96,51 @@ describe Lita::Handlers::Gitlab2jenkinsGhp, lita_handler: true do
           expect(Lita.redis.redis.keys("lita.test:handlers:gitlab2jenkins_ghp:#{redis_key_merge_request}").size).to eq 0
         end
       end
-
     end
+
+    context 'Using POST endpoint for jenkins' do
+      it "route gitlab push event POST #{http_route_path}/jenkins to :receive" do
+        routes_http(:post, "#{http_route_path}/#{to_route_jenkins}").to(:receive)
+      end
+
+      context 'when jenkins post status job when is STARTED' do
+        let(:jenkins_started_payload) { fixture_file('jenkins/job_started') }
+        before do
+          allow(params).to receive(:[]).with('payload').and_return(jenkins_started_payload)
+          allow(params).to receive(:[]).with('request_method').and_return(request_method_post)
+          allow(params).to receive(:[]).with('to_route').and_return(to_route_jenkins)
+          allow(params).to receive(:[]).with('id_project').and_return(jenkins_id_project)
+          allow(params).to receive(:[]).with('project_name_params').and_return(project_name_params)
+          Lita::Handlers::Gitlab2jenkinsGhp.new(robot).receive(request, response)
+        end
+        it 'notifies what merge request its stored' do
+          expect(Lita.redis.redis.get("lita.test:handlers:gitlab2jenkins_ghp:#{redis_key_jenkins_job}")).to eq jenkins_started_payload
+        end
+      end
+
+      context 'when jenkins post status job when is FINISHED' do
+        let(:jenkins_finished_payload) { fixture_file('jenkins/job_finished') }
+        before do
+          allow(params).to receive(:[]).with('payload').and_return(jenkins_finished_payload)
+          allow(params).to receive(:[]).with('request_method').and_return(request_method_post)
+          allow(params).to receive(:[]).with('to_route').and_return(to_route_jenkins)
+          allow(params).to receive(:[]).with('id_project').and_return(jenkins_id_project)
+          allow(params).to receive(:[]).with('project_name_params').and_return(project_name_params)
+          Lita::Handlers::Gitlab2jenkinsGhp.new(robot).receive(request, response)
+        end
+        it 'notifies what merge request its stored' do
+          expect(Lita.redis.redis.get("lita.test:handlers:gitlab2jenkins_ghp:#{redis_key_jenkins_job}")).to eq jenkins_finished_payload
+        end
+      end
+    end
+
+
+    context 'Using GET endpoint from gitlab' do
+      it "route gitlab fetch data of a GET #{http_route_path}/ci_status to :receive" do
+        routes_http(:post, "#{http_route_path}/#{to_route_ci_status}").to(:receive)
+      end
+    end
+
 
   end
 
