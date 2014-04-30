@@ -1,6 +1,7 @@
 module Lita
   module Handlers
     class Gitlab2jenkinsGhp < Handler
+
       def self.default_config(config)
         config.room                  = '#test2'
         config.group                 = 'group_name'
@@ -11,31 +12,47 @@ module Lita
         config.saved_request         = ''
       end
 
-      http.post '/lita/gitlab2jenkinsghp', :do_mr
+      http.post '/lita/gitlab2jenkinsghp/*to_route', :receive
 
-      http.post '/lita/gitlab2jenkinsghp_mr_status', :do_mr_change_status
+      http.get '/lita/gitlab2jenkinsghp/*to_route/*id_project/builds/*sha_commit', :receive
 
-      http.get '/lita/gitlab2jenkinsghp_ci_status/*id_project/builds/*sha_commit', :do_ci_change_status
-
-      http.get '/lita/gitlab2jenkinsghp_ci_status/*id_project', :do_img_jenkins
-
-      def do_mr(request, response)
-        json_body = extract_json_from_request(request)
-        Lita.logger.info("Payload: #{json_body}")
+      def receive(request, response)
+        routing_to = request.params['to_route'] || request.env['router.params'][:to_route][0].to_s
+        routing_to_request_method = request.params['request_method'] || request.request_method
+        json_body = request.params['payload'] || extract_json_from_request(request)
         data = symbolize parse_payload(json_body)
-        message = format_message(data, json_body)
-
+        if data.key? :object_attributes
+          project_name_target = request.params['project_name_target'] || git_lab_data_project_info(data[:object_attributes][:target_project_id])['name']
+          project_source_id_commit = request.params['project_source_id_commit'] || git_lab_data_branch_info(data[:object_attributes][:source_project_id], data[:object_attributes][:source_branch])['commit']['id']
+        else
+          project_name_target = ''
+          project_source_id_commit = ''
+        end
+        if routing_to_request_method =='POST'
+          if routing_to == 'gitlab'       #receive hook from gitlab to report commits and merge request event
+            do_mr(json_body, data, project_name_target, project_source_id_commit)
+          elsif routing_to == 'jenkins'                                           #receive hook from jenkins to report job status build
+            do_mr_change_status(request, response, json_body, data)
+          end
+        elsif routing_to_request_method =='GET'
+          if routing_to == 'ci_status'
+            if request.env['router.params'][:sha_commit][0].nil? false
+              do_ci_change_status(request, response)
+            else
+              do_img_jenkins(request, response)
+            end
+          end
+        end
+        # robot.send_message(target, message)
       rescue Exception => e
-        Lita.logger.error "Could not domr: #{e.inspect}"
+        Lita.logger.error "Could not receive: #{e.inspect}"
       end
 
-      def do_mr_change_status(request, response)
-        json_body = extract_json_from_request(request)
+      def do_mr_change_status(request, response, json_body, data)
         id_project = request.params['id_project'].to_s
         Lita.logger.info "Jenkins Proyect: #{id_project}"
         Lita.logger.info("Payload: #{json_body}")
-        data = symbolize parse_payload(json_body)
-        message = format_message_mr(data, json_body, id_project)
+        ci_status_setter(data, json_body, id_project)
 
       rescue Exception => e
         Lita.logger.error "Could not domr_change_status: #{e.inspect}"
@@ -127,21 +144,20 @@ module Lita
         obj
       end
 
-      def format_message(data, json)
+      def do_mr(json_body, data, project_name_target, project_source_id_commit)
         if data.key? :before
-          build_branch_hook(data, json)
+          build_branch_hook(json_body, data)
         elsif data.key? :object_kind
-          build_merge_hook(data, json)
+          build_merge_hook(json_body, data, project_name_target, project_source_id_commit)
         end
 
       rescue => e
         Lita.logger.error "Could not format message: #{e.inspect}"
       end
 
-      def build_branch_hook(data, json)
-        data[:link] = "<#{data[:repository][:homepage]}|#{data[:repository][:name]}>"
+      def build_branch_hook(json, data)
         redis.set("commit:#{data[:commits][0][:id]}", json.to_s)
-        "Commit Stored: #{data[:commits][0][:id]}"
+        return "Commit Stored: #{data[:commits][0][:id]}"
       end
 
       def gitlab_rescue_commit(project_id, branch)
@@ -180,19 +196,21 @@ module Lita
         parse_payload((((rescue_gitlab_project_name(id)).to_hash)[:body]))
       end
 
-      def build_merge_hook(data, json)
-        redis.set("mr:#{git_lab_data_project_info(data[:object_attributes][:target_project_id])['name']}:#{data[:object_attributes][:id]}", json.to_s)
+      def build_merge_hook(json, data, project_name_target, project_source_id_commit)
+        redis.set("mr:#{project_name_target}:#{data[:object_attributes][:id]}", json.to_s)
         if ['reopened', 'opened'].include? data[:object_attributes][:state]
           Lita.logger.info "It's a merge request"
-          payload_rescue = redis.get("commit:#{git_lab_data_branch_info(data[:object_attributes][:source_project_id], data[:object_attributes][:source_branch])['commit']['id']}")
+          payload_rescue = redis.get("commit:#{project_source_id_commit}")
           if (payload_rescue).size > 0
             Lita.logger.info "Merge request found"
             jenkins_hook_ghp(payload_rescue)
+            "Merge Request found to play #{payload_rescue}"
+          else
+            "No commit found"
           end
         else
-          redis.del("mr:#{git_lab_data_project_info(data[:object_attributes][:target_project_id])['name']}:#{data[:object_attributes][:id]}")
-          jproject_name = git_lab_data_project_info(data[:object_attributes][:target_project_id])['name']
-          gkeys = @redis.keys("jenkins:#{jproject_name}:*")
+          redis.del("mr:#{project_name_target}:#{data[:object_attributes][:id]}")
+          gkeys = @redis.keys("jenkins:#{project_name_target}:*")
           gkeys.each do |key|
             Lita.logger.info "Jenkins Key for Delete: #{key}"
             json_off = redis.get(key)
@@ -200,6 +218,7 @@ module Lita
             Lita.logger.info "Branch found for delete: #{jdata[:build][:parameters][:ANY_BRANCH_PATTERN]}"
             redis.del(key) if data[:object_attributes][:source_branch] == jdata[:build][:parameters][:ANY_BRANCH_PATTERN]
           end
+          "Merge request for delete"
         end
 
       rescue Exception => e
@@ -218,7 +237,7 @@ module Lita
         Lita.logger.error "Could not key_value_source_project_finder_mr #{e.inspect}"
       end
 
-      def format_message_mr(data, json, id)
+      def ci_status_setter(data, json, id)
         project_name = git_lab_data_project_info(id)['name']
         source_project_id = key_value_source_project_finder_mr(data[:build][:parameters]['ANY_BRANCH_PATTERN'],project_name)
         redis.set("jenkins:#{project_name}:#{data[:build][:number]}", json)
