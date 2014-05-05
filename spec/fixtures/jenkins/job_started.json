@@ -1,0 +1,15 @@
+{
+    "name":"QA-API",
+    "url":"job/QA-API/",
+    "build":
+    {
+        "full_url":"http://jenkins.bbrmobile.me/job/QA-API/130/",
+        "number":130,
+        "phase":"STARTED",
+        "url":"job/QA-API/130/",
+        "parameters":
+        {
+            "ANY_BRANCH_PATTERN":"master"
+        }
+    }
+}

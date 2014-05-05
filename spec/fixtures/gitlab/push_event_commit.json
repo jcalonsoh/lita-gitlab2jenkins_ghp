@@ -1,0 +1,27 @@
+{
+    "before":"a21ad2af8142546d837d8b811b8c60c60746147e",
+    "after":"cfa9e9a8421e45407d03dc8d2e0ac0e80ea9dba1",
+    "ref":"refs/heads/testing_hooking_lita",
+    "user_id":2,
+    "user_name":"jcalonsoh",
+    "project_id":36,
+    "repository":
+    {
+        "name":"api",
+        "url":"git@gitlab.bbrmobile.me:jcalonso/api.git",
+        "description":"",
+        "homepage":"http://gitlab.bbrmobile.me/jcalonso/api"},
+        "commits":
+            [{
+                "id":"cfa9e9a8421e45407d03dc8d2e0ac0e80ea9dba1",
+                "message":"setting database.yml.sample pool to 12",
+                "timestamp":"2014-04-09T16:00:54-03:00",
+                "url":"http://gitlab.bbrmobile.me/jcalonso/api/commit/cfa9e9a8421e45407d03dc8d2e0ac0e80ea9dba1",
+                "author":
+                {
+                    "name":"Juan Carlos Alonso Holmstron",
+                    "email":"jcalonso@bbr.cl"
+                }
+            }],
+    "total_commits_count":1
+}

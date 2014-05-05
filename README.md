@@ -4,7 +4,7 @@
 [![Code Climate](https://codeclimate.com/github/jcalonsoh/lita-gitlab2jenkins_ghp.png)](https://codeclimate.com/github/jcalonsoh/lita-gitlab2jenkins_ghp)
 [![Coverage Status](https://coveralls.io/repos/jcalonsoh/lita-gitlab2jenkins_ghp/badge.png)](https://coveralls.io/r/jcalonsoh/lita-gitlab2jenkins_ghp)
 
-**lita-fitlab2jenkins_ghp is a [Lita](https://github.com/jimmycuadra/lita) that uses [GitLab](https://www.gitlab.com/gitlab-ce/)
+**lita-fitlab2jenkins_ghp** is a [Lita](https://github.com/jimmycuadra/lita) that uses [GitLab](https://www.gitlab.com/gitlab-ce/)
 webhooks and ci-status to be build with [Jenkins](http://jenkins-ci.org/).
 
 
@@ -37,6 +37,7 @@ Lita.configure do |config|
   config.handlers.gitlab2jenkins_ghp.url_jenkins_img      = '/buildStatus/icon?job='
   config.handlers.gitlab2jenkins_ghp.url_jenkins_icon     = '/static/843013a3/images/jenkins.png'
   config.handlers.gitlab2jenkins_ghp.private_token_gitlab = 'some_gitlab_token_from_admin_user'
+  config.redis.host                                       = 'redis.example.com'
 end
 ```
 
@@ -45,3 +46,9 @@ For more understanding please read [wiki](https://github.com/jcalonsoh/lita-gitl
 ## License
 
 [MIT](http://opensource.org/licenses/MIT)
+
+## TODO:
+
+* Make tests for GET scenarios when GitLab queries ci status
+* Refactoring gem to nit loggic flow
+* Add scenario for "Tag push events" on next version

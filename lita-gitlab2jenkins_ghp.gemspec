@@ -1,6 +1,6 @@
 Gem::Specification.new do |spec|
   spec.name          = 'lita-gitlab2jenkins_ghp'
-  spec.version       = '0.0.2'
+  spec.version       = '1.0.0'
   spec.authors       = ['Juan Carlos Alonso Holmstron']
   spec.email         = ['j.carlos.alonso.h@gmail.com']
   spec.description   = %q{A Lita Handler for storing gitlabs's pushed events for after send them in a merge request trigger}
@@ -15,8 +15,6 @@ Gem::Specification.new do |spec|
   spec.require_paths = ['lib']
 
   spec.add_runtime_dependency 'lita', '>= 3.0'
-  spec.add_runtime_dependency 'redis', '~> 3.0.7'
-  spec.add_runtime_dependency 'gitlab', '~> 3.0.0'
 
   spec.add_development_dependency 'bundler', '~> 1.3'
   spec.add_development_dependency 'rake'
