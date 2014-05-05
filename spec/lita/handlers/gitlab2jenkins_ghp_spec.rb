@@ -93,7 +93,7 @@ describe Lita::Handlers::Gitlab2jenkinsGhp, lita_handler: true do
           Lita::Handlers::Gitlab2jenkinsGhp.new(robot).receive(request, response)
         end
         it 'notifies what merge request its stored' do
-          expect(Lita.redis.redis.keys("lita.test:handlers:gitlab2jenkins_ghp:#{redis_key_merge_request}").size).to eq 0
+          expect(Lita.redis.redis.get("lita.test:handlers:gitlab2jenkins_ghp:#{redis_key_merge_request}")).to be_nil
         end
       end
     end
@@ -138,6 +138,15 @@ describe Lita::Handlers::Gitlab2jenkinsGhp, lita_handler: true do
       it "route gitlab fetch data of a GET #{http_route_path}/ci_status to :receive" do
         routes_http(:post, "#{http_route_path}/#{to_route_ci_status}").to(:receive)
       end
+
+      context 'when gitlab get de ci status from commit' do
+          # TODO: Add tests for the case when Gitlab requests the status
+      end
+
+      context 'when gitlab get de ci status from master' do
+        # TODO: Add tests for the case when Gitlab requests the status
+      end
+
     end
   end
 
