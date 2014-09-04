@@ -57,3 +57,7 @@ For more understanding please read [wiki](https://github.com/jcalonsoh/lita-gitl
 ## WTF
 
 Since GitLab is charging for this functionality in it's enterprise http://doc.gitlab.com/ee/integration/jenkins.html, I moved it to a private bucket for no more unethical practice.
+
+## For Social Working goto
+
+https://bitbucket.org/jcalonsoh/lita-gitlab2jenkins_ghp/wiki/Home, and request participation =)
