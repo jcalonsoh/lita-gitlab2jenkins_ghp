@@ -52,3 +52,8 @@ For more understanding please read [wiki](https://github.com/jcalonsoh/lita-gitl
 * Make tests for GET scenarios when GitLab queries ci status
 * Refactoring gem to nit loggic flow
 * Add scenario for "Tag push events" on next version
+* 
+
++## WTF
++
++Since GitLab is charging for this functionality in it's enterprise http://doc.gitlab.com/ee/integration/jenkins.html, I moved it to a private bucket for no more unethical practice.
